@@ -130,3 +130,254 @@ def insert_game(cur, appid, game):
 
     cur.execute(sql_games, vals_games)
     cur.execute(sql_details, vals_details)
+
+# =====================================================================
+# INSERTS RELACIONADOS
+# =====================================================================
+def insert_related(cur, appid, game):
+
+    game_plataform = {
+        'windows': game.get("windows", None),
+        'mac': game.get("mac", None),
+        'linux': game.get("linux", None)
+    }
+
+    for plataform, value in game_plataform.items():
+        if value == True:
+            cur.execute(
+                """
+                SELECT id
+                FROM operation_systems
+                WHERE so_name = %s
+                """,(plataform,)
+            )
+
+            result = cur.fetchone()
+            if result:
+                so_id = result[0]
+                cur.execute(
+                    """
+                    INSERT INTO operation_systems_games
+                    VALUES(%s, %s)
+                    ON CONFLICT DO NOTHING;
+                    """, (so_id, appid)
+                )
+
+    reviews = game.get("reviews", "")
+    reviews_separadas = parse_reviews(reviews)
+
+    if reviews_separadas == "":
+        pass
+    else:
+        for review in reviews_separadas:
+            author_name = review["author"]
+            review_text = review["review"]
+
+            cur.execute(
+                """INSERT INTO author (author_name) VALUES (%s)
+                    ON CONFLICT (author_name) 
+                    DO UPDATE SET author_name = EXCLUDED.author_name
+                    RETURNING id;""",
+                (author_name,)
+            )
+
+            author_id = cur.fetchone()[0]
+
+            cur.execute(
+                """INSERT INTO reviews_game (id_author, id_game, review_text) 
+                    VALUES (%s, %s, %s) 
+                    ON CONFLICT DO NOTHING;""",
+                (author_id, appid, review_text)
+            )
+        
+    # DEVELOPERS
+    for dev in game.get("developers", []):
+        cur.execute(
+            """INSERT INTO developers (developer_name) VALUES (%s)
+                ON CONFLICT (developer_name) 
+                DO UPDATE SET developer_name = EXCLUDED.developer_name 
+                RETURNING id;""",
+            (dev,)
+        )
+
+        dev_id = cur.fetchone()[0]
+
+        cur.execute(
+            """INSERT INTO developers_game (id_developer, id_game) 
+                VALUES (%s, %s) 
+                ON CONFLICT DO NOTHING;""",
+            (dev_id, appid)
+        )
+
+    # PUBLISHERS
+    for pub in game.get("publishers", []):
+        cur.execute(
+            """INSERT INTO publishers (publisher_name) VALUES (%s)
+            ON CONFLICT (publisher_name) 
+            DO UPDATE SET publisher_name = EXCLUDED.publisher_name 
+            RETURNING id;""",
+            (pub,)
+        )
+
+        pub_id = cur.fetchone()[0]
+        
+        cur.execute(
+            """INSERT INTO publishers_game (id_publisher, id_game) VALUES (%s, %s)
+            ON CONFLICT DO NOTHING;""",
+            (pub_id, appid)
+        )
+
+    # CATEGORIES
+    for cat in game.get("categories", []):
+        cur.execute(
+            """INSERT INTO categories (category_name) VALUES (%s) 
+            on conflict (category_name)
+            DO UPDATE SET category_name = EXCLUDED.category_name 
+            RETURNING id;""",
+            (cat,)
+        )
+        
+        cat_id = cur.fetchone()[0]
+
+        cur.execute(
+            """INSERT INTO categories_game (id_category, id_game) VALUES (%s, %s)
+            ON CONFLICT DO NOTHING;""",
+            (cat_id, appid)
+        )
+
+    # GENRES
+    for gen in game.get("genres", []):
+        cur.execute(
+            """INSERT INTO genres (genre_name) VALUES (%s) 
+            ON CONFLICT (genre_name) 
+            DO UPDATE SET genre_name = EXCLUDED.genre_name 
+            RETURNING id;""",
+            (gen,)
+        )
+        
+        gen_id = cur.fetchone()[0]
+
+        cur.execute(
+            """INSERT INTO genres_game (id_genre, id_game) VALUES (%s, %s)
+            ON CONFLICT DO NOTHING;""",
+            (gen_id, appid)
+        )
+
+    # SCREENSHOTS
+    screenshot_list = game.get("scrennshots") or game.get("screenshots") or []
+
+    for shot in screenshot_list:
+        cur.execute(
+            "INSERT INTO screenshots (appid, screenshot_url) VALUES (%s, %s);",
+            (appid, shot)
+        )
+
+    # MOVIES
+    for movie in game.get("movies", []):
+        cur.execute(
+            "INSERT INTO movies (appid, movie_url) VALUES (%s, %s);",
+            (appid, movie)
+        )
+
+    # TAGS
+    tag_dict = dict(game.get("tags", {}))
+    if(tag_dict):
+        for tag_name, tag_score in tag_dict.items():
+            cur.execute(
+                """INSERT INTO tags (tag_name) VALUES (%s) 
+                ON CONFLICT (tag_name) 
+                DO UPDATE SET tag_name = EXCLUDED.tag_name
+                RETURNING id;""",
+                (str(tag_name),)
+            )
+
+            tag_id = cur.fetchone()[0]
+
+            cur.execute(
+                """INSERT INTO tags_game (id_tag, id_game) VALUES (%s, %s)
+                ON CONFLICT DO NOTHING;""",
+                (tag_id, appid)
+            )
+
+    for lang in game.get("supported_languages", []):
+        cur.execute(
+            """INSERT INTO languages (language_name) VALUES (%s) 
+            ON CONFLICT (language_name) 
+            DO UPDATE SET language_name = EXCLUDED.language_name
+            RETURNING id;""",
+            (lang,)
+        )
+
+        lang_id = cur.fetchone()[0]
+
+        cur.execute(
+            "INSERT INTO languages_game (id_language, id_game) VALUES (%s, %s) ON CONFLICT DO NOTHING;",
+            (lang_id, appid)
+        )
+    
+    for audio_lang in game.get("full_audio_languages", []):
+        cur.execute(
+            """INSERT INTO audio_languages (audio_language_name) VALUES (%s) 
+            ON CONFLICT (audio_language_name) 
+            DO UPDATE SET audio_language_name = EXCLUDED.audio_language_name
+            RETURNING id;""",
+            (audio_lang,)
+        )
+
+        audio_id = cur.fetchone()[0]
+
+        cur.execute(
+            "INSERT INTO audio_languages_game (id_audio, id_game) VALUES (%s, %s) ON CONFLICT  DO NOTHING;",
+            (audio_id, appid)
+        )
+
+# =====================================================================
+# IMPORT PRINCIPAL
+# =====================================================================
+def import_games():
+    print("\nLendo arquivo JSON...")
+
+    conn = psycopg2.connect(**DB_CONFIG)
+    cur = conn.cursor()
+
+    # Carregando JSON
+    f = open(JSON_PATH, "rb")
+
+    parser = ijson.kvitems(f, "")
+
+    count = 0
+
+    insert_enums(cur)
+
+    for appid, game in parser:
+
+        try:
+            appid = int(appid)
+        except:
+            continue
+
+        # INSERIR NA TABELA PRINCIPAL
+        insert_game(cur, appid, game)
+
+        # INSERIR NAS TABELAS RELACIONADAS
+        insert_related(cur, appid, game)
+
+        count += 1
+
+        # Commit a cada 1000 jogos
+        if count % 1000 == 0:
+            conn.commit()
+            print(f"✔ {count} jogos importados...")
+
+    conn.commit()
+    cur.close()
+    conn.close()
+    f.close()
+
+    print("\nImportação finalizada com sucesso!")
+    print(f"Total importado: {count} jogos.\n")
+
+
+if __name__ == "__main__":
+    import_games()
+    

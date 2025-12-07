@@ -1,2 +1,4 @@
 Import_Data/
 *.json
+venv
+Scripts normalização/DML/__pycache__

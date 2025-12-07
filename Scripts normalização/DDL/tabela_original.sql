@@ -5,7 +5,7 @@ CREATE TABLE games (
     estimated_owners            TEXT,
     peak_ccu                    INTEGER NOT NULL,
     required_age                INTEGER NOT NULL,
-    price                       INTEGER NOT NULL,
+    price                       NUMERIC NOT NULL,
     dlc_count                   INTEGER NOT NULL,
     about_the_game              TEXT,
     supported_languages         TEXT, 
